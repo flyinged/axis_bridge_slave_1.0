@@ -1,0 +1,31 @@
+{signal: [
+  {name: 'clk',           wave: 'p...|......'},
+  ['AXI Stream',
+  {name: 'axis_tvalid',   wave: '01..|...0..',                },
+  {name: 'axis_tdata',    wave: 'x===|===x..', data: ["SOF","D0","...","Dn","CRC","EOF"], },
+  ],
+  {name: 'sof',           wave: '010.|......', },
+  {name: 'eof',           wave: '0...|..10..', },
+  ['CRC',
+  {name: 'crc_rst',       wave: '010.|......', },
+  {name: 'crc_in_valid',  wave: '0.1.|.0....', },
+  {name: 'crc_out_valid', wave: '0...|..10..', },
+  ],
+  {name: 'pkt_id',        wave: '=...|...=..', data:["0","1","2"]},
+   ['INFO FIFO',
+  {name: 'ififo_wr',      wave: '0...|..10..', },
+  {name: 'ififo_din',     wave: 'x...|..=x..', data:["I0","I1","I2"]},
+  {name: 'ififo_empty',   wave: '1...|....0.', },
+  {name: 'ififo_dout',    wave: 'x...|....=x', data:["I0","I1","I2"]},
+    ],
+  ['DATA FIFO',
+  {name: 'dfifo_wr',      wave: '0.1.|..0...', },
+  {name: 'dfifo_din',     wave: 'x.==|==x...', data:["I0,D0","..","I0,Dn","I0,CRC"]},
+  {name: 'dfifo_empty',   wave: '1..0|......', },
+  {name: 'dfifo_dout',    wave: 'x..=|......', data:["I0,D0","..","I0,Dn","I0,CRC"]},
+  ],
+  ],
+     config: {hscale:2}
+}
+     
+  
