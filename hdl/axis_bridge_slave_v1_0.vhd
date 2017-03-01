@@ -3,7 +3,7 @@
 --------------------------------------------------------------------------------
 -- Unit    : axi_bridge_slave_v1_0.vhd
 -- Author  : Goran Marinkovic, Section Diagnostic
--- Version : $Revision: 1.14 $
+-- Version : $Revision: 1.15 $
 --------------------------------------------------------------------------------
 -- Copyright© PSI, Section Diagnostic
 --------------------------------------------------------------------------------
@@ -49,7 +49,7 @@ entity axis_bridge_slave_v1_0 is
       -- Debug
       --------------------------------------------------------------------------
       debug_clk                   : out    std_logic;
-      debug                       : out    std_logic_vector(127 downto  0);
+      debug                       : out    std_logic_vector(255 downto  0);
       --------------------------------------------------------------------------
       -- System
       --------------------------------------------------------------------------
@@ -186,6 +186,10 @@ architecture structural of axis_bridge_slave_v1_0 is
       RD_AXI_ERROR
    );
    signal   state                 : state_type;
+
+   --attribute fsm_encoding : string;
+   --attribute fsm_encoding of state : signal is "gray"; --"one_hot", "sequential", "johnson", "gray", "auto", "none"
+
    signal   state_write           : std_logic := '0';
 
    -- TX frame
@@ -206,6 +210,8 @@ architecture structural of axis_bridge_slave_v1_0 is
    signal   s_arlen_cnt           : unsigned( 7 downto  0) := (others => '0');
 
    signal   s_rdata               : std_logic_vector(31 downto  0) := (others => '0');
+   signal   s_rresp               : std_logic_vector( 1 downto  0) := (others => '0');
+   signal   s_rlast               : std_logic := '0';
    signal   s_rvalid              : std_logic := '0';
 
    signal   s_awid                : std_logic_vector(C_S00_AXI_ID_WIDTH - 1 downto 0) := (others => '0');
@@ -268,13 +274,14 @@ architecture structural of axis_bridge_slave_v1_0 is
    signal state_encode : std_logic_vector(4 downto 0);
    signal last_states : std_logic_Vector(31 downto 0);
 
+   constant CSP_SET : natural := 1;
+
 begin
 
    -----------------------------------------------------------------------------
    -- Debug
    -----------------------------------------------------------------------------
-   -- Common
-   debug_clk                      <= AXI_ACLK;
+
    -- State machine
    state_encode                   <= "00001" when (state = IDLE            ) else
                                      "00010" when (state = DISCARD_FRAME   ) else
@@ -296,6 +303,9 @@ begin
                                      "10011" when (state = RD_AXI_DATA     ) else
                                      "10100" when (state = RD_AXI_ERROR    ) else "00000";
 
+CSP_SET0_G : if CSP_SET = 0 generate
+   
+   debug_clk                      <= AXI_ACLK;
    
    debug(4 downto 0) <= state_encode;
    debug(5)  <= s_arready; 
@@ -346,6 +356,53 @@ begin
 
    debug(127 downto 96) <= S00_AXI_ARADDR; 
 
+end generate; --CSP_SET0
+
+--------------------------------------------------------------------------------
+CSP_SET1_G: if CSP_SET = 1 generate
+
+       debug_clk <= AXI_ACLK;
+
+       CSP_REG_P : process(AXI_ACLK)
+       begin
+           if rising_edge(AXI_ACLK) then
+
+               debug(031 downto 000) <= S00_AXIS_TDATA; 
+               debug(063 downto 032) <= S00_AXI_ARADDR; 
+               debug(095 downto 064) <= s_rdata;
+               debug(103 downto 096) <= S00_AXI_ARLEN; --8
+               debug(107 downto 104) <= S00_AXIS_TUSER; --4
+               debug(109 downto 108) <= S00_AXI_ARBURST; --2
+               debug(111 downto 110) <= s_rresp; --2
+               debug(           112) <= S00_AXIS_TVALID;
+               debug(           113) <= rx_tready;
+               debug(           114) <= S00_AXI_ARVALID;
+               debug(           115) <= s_arready;
+               debug(           116) <= s_rlast;
+               debug(           117) <= s_rvalid;
+               debug(           118) <= S00_AXI_RREADY;
+               debug(122 downto 119) <= rx_frame_opcode;
+               debug(127 downto 123) <= state_encode; --5
+
+               debug(           128) <= rx_frame_re;
+               debug(           129) <= rx_frame_sof;
+               debug(           130) <= rx_frame_eof;
+               debug(           131) <= rx_frame_active;
+
+               debug(           132) <= rx_fifo_i_e;     
+               debug(           133) <= rx_fifo_i_dout(0);
+               debug(           134) <= rx_fifo_d_re;
+               debug(           135) <= rx_crc_rst;
+               debug(           136) <= rx_crc_valid;
+               debug(           137) <= rx_crc_err;
+               debug(           138) <= rx_fifo_i_we;
+               debug(           139) <= '0';
+               debug(171 downto 140) <= rx_crc;
+
+           end if;
+       end process;
+
+end generate; --CSP_SET1
 
    -----------------------------------------------------------------------------
    -- STATISTICS
@@ -459,6 +516,7 @@ begin
       CRCOUT                      => rx_crc
    );
 
+   --If CRC is computer on PACKET+CRC, the result is always the same residual value
    rx_crc_err                     <= '0' when (rx_crc = CRC_RESIDUAL) else '1';
 
    -----------------------------------------------------------------------------
@@ -894,13 +952,16 @@ begin
       end if;
    end process;
 
-   s_rdata   <= rx_fifo_d_dout(31 downto 0);
+
+   s_rdata   <= X"DEADBEE4" when (state = RD_AXI_ERROR) else rx_fifo_d_dout(31 downto 0);
+   s_rresp   <= "10" when (state = RD_AXI_ERROR) else "00"; -- SLERROR
+   s_rlast   <= '1' when (((state = RD_AXI_DATA) or (state = RD_AXI_ERROR)) and (s_arlen_cnt = unsigned(s_arlen))) else '0';
    s_rvalid  <= '1' when (((state = RD_AXI_DATA) and (rx_fifo_d_e = '0'))  or (state = RD_AXI_ERROR)) else '0';
 
-   S00_AXI_RDATA                  <= X"DEADBEE4" when (state = RD_AXI_ERROR) else s_rdata;
-   S00_AXI_RRESP                  <= "10" when (state = RD_AXI_ERROR) else "00"; -- SLERROR
-   S00_AXI_RLAST                  <= '1' when (((state = RD_AXI_DATA) or (state = RD_AXI_ERROR)) and (s_arlen_cnt = unsigned(s_arlen))) else '0';
-   S00_AXI_RVALID                 <= s_rvalid;
+   S00_AXI_RDATA  <= s_rdata;
+   S00_AXI_RRESP  <= s_rresp;
+   S00_AXI_RLAST  <= s_rlast;
+   S00_AXI_RVALID <= s_rvalid;
 
    -----------------------------------------------------------------------------
    -- Write ID register
