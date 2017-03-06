@@ -3,7 +3,7 @@
 --------------------------------------------------------------------------------
 -- Unit    : axi_bridge_slave_v1_0.vhd
 -- Author  : Goran Marinkovic, Section Diagnostic
--- Version : $Revision: 1.15 $
+-- Version : $Revision: 1.16 $
 --------------------------------------------------------------------------------
 -- Copyright© PSI, Section Diagnostic
 --------------------------------------------------------------------------------
@@ -167,6 +167,7 @@ architecture structural of axis_bridge_slave_v1_0 is
    (
       IDLE,
       DISCARD_FRAME,
+      FLUSH_DATA_FIFO,
       WR_MGT_SOF,
       WR_MGT_CMD,
       WR_MGT_ADDR,
@@ -301,7 +302,8 @@ begin
                                      "10000" when (state = RD_MGT_EOF      ) else
                                      "10001" when (state = RD_AXI_DATA_WAIT) else
                                      "10011" when (state = RD_AXI_DATA     ) else
-                                     "10100" when (state = RD_AXI_ERROR    ) else "00000";
+                                     "10100" when (state = RD_AXI_ERROR    ) else
+                                     "10101" when (state = FLUSH_DATA_FIFO ) else "00000";
 
 CSP_SET0_G : if CSP_SET = 0 generate
    
@@ -603,6 +605,7 @@ end generate; --CSP_SET1
 
    rx_fifo_d_re                   <= '1' when ( (rx_fifo_d_e = '0') and
                                                 (
+                                                 (state = FLUSH_DATA_FIFO) or 
                                                  ((state = DISCARD_FRAME   ) and (rx_frame_id_eq = '0' )) or --ML84 CHANGE: fixed check on rx_frame_id_eq (discard when ID does NOT match)
                                                  ((state = RD_AXI_DATA_WAIT) and (rx_fifo_i_e = '0'    ) and (rx_fifo_i_dout(0) = '0') and (rx_frame_opcode = "0101")) or --pull command from DATA FIFO
                                                  ((state = RD_AXI_DATA     ) and (S00_AXI_RREADY  = '1')) or
@@ -665,6 +668,10 @@ end generate; --CSP_SET1
                   if ((rx_frame_id_eq = '1') or (rx_fifo_d_e = '1')) then
                      state        <= IDLE;
                   end if;
+               when FLUSH_DATA_FIFO => --ML84 3.3.17
+                   if (rx_fifo_d_e = '1') then
+                       state <= IDLE;
+                   end if;
                --------------------------------------------------------------------
                when WR_MGT_SOF =>
                   if (tx_tready = '1') then
@@ -705,11 +712,13 @@ end generate; --CSP_SET1
                   end if;
                when WR_AXI_ACK =>
                   if (S00_AXI_BREADY = '1') then
-                     state     <= DISCARD_FRAME;
+                     --state     <= DISCARD_FRAME;
+                     state     <= FLUSH_DATA_FIFO; --ML84 3.3.17
                   end if;
                when WR_AXI_ERROR =>
                   if (S00_AXI_BREADY = '1') then
-                     state     <= DISCARD_FRAME;
+                     --state     <= DISCARD_FRAME;
+                     state     <= FLUSH_DATA_FIFO; --ML84 3.3.17
                   end if;
                --------------------------------------------------------------------
                when RD_MGT_SOF =>
@@ -740,13 +749,15 @@ end generate; --CSP_SET1
                when RD_AXI_DATA =>
                   if (rx_fifo_d_re = '1') then
                      if (s_arlen_cnt = unsigned(s_arlen)) then
-                        state     <= DISCARD_FRAME;
+                        --state     <= DISCARD_FRAME;
+                        state     <= FLUSH_DATA_FIFO; --ML84 3.3.17
                      end if;
                   end if;
                when RD_AXI_ERROR =>
                   if (S00_AXI_RREADY = '1') then
                      if (s_arlen_cnt = unsigned(s_arlen)) then
-                        state     <= DISCARD_FRAME;
+                        --state     <= DISCARD_FRAME;
+                        state     <= FLUSH_DATA_FIFO; --ML84 3.3.17
                      end if;
                   end if;
                --------------------------------------------------------------------
